@@ -36,6 +36,7 @@ type Config struct {
 	FileNameEncoding        string
 	EncryptedSuffix         string
 	StripOrigExt            bool
+	LegacyStreamIV          bool
 }
 
 type Cipher struct {
@@ -48,6 +49,7 @@ type Cipher struct {
 	block          gocipher.Block
 	nameKey        [32]byte
 	nameTweak      [nameBlockSize]byte
+	legacyStreamIV bool
 }
 
 func New(cfg Config) (*Cipher, error) {
@@ -90,6 +92,7 @@ func New(cfg Config) (*Cipher, error) {
 		block:          block,
 		nameKey:        nameKey,
 		nameTweak:      tweak,
+		legacyStreamIV: cfg.LegacyStreamIV,
 	}, nil
 }
 
@@ -286,8 +289,9 @@ func (c *Cipher) encryptStreamSegment(plaintext string, enc nameEncoding) string
 	}
 	plain := []byte(plaintext)
 	out := make([]byte, 4+len(plain))
-	binary.BigEndian.PutUint32(out, crc32.ChecksumIEEE(plain))
-	c.stream(out[4:], plain)
+	sum := crc32.ChecksumIEEE(plain)
+	binary.BigEndian.PutUint32(out, sum)
+	c.stream(out[4:], plain, sum, false)
 	return enc.EncodeToString(out)
 }
 
@@ -302,16 +306,23 @@ func (c *Cipher) decryptStreamSegment(ciphertext string, enc nameEncoding) (stri
 	if len(raw) < 4 {
 		return "", fmt.Errorf("too short after filename decode")
 	}
+	sum := binary.BigEndian.Uint32(raw[:4])
 	plain := make([]byte, len(raw)-4)
-	c.stream(plain, raw[4:])
-	if crc32.ChecksumIEEE(plain) != binary.BigEndian.Uint32(raw[:4]) {
+	c.stream(plain, raw[4:], sum, c.legacyStreamIV)
+	if crc32.ChecksumIEEE(plain) != sum {
 		return "", fmt.Errorf("filename crc32 mismatch")
 	}
 	return string(plain), nil
 }
 
-func (c *Cipher) stream(dst, src []byte) {
-	gocipher.NewCTR(c.block, c.nameTweak[:]).XORKeyStream(dst, src)
+func (c *Cipher) stream(dst, src []byte, sum uint32, legacy bool) {
+	var iv [nameBlockSize]byte
+	if legacy {
+		copy(iv[:], c.nameTweak[:])
+	} else {
+		binary.BigEndian.PutUint32(iv[nameBlockSize-4:], sum)
+	}
+	gocipher.NewCTR(c.block, iv[:]).XORKeyStream(dst, src)
 }
 
 func (c *Cipher) decryptOffFileName(in string) (string, error) {
