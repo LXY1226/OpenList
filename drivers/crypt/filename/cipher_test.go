@@ -1,6 +1,8 @@
 package filename
 
 import (
+	"encoding/binary"
+	"hash/crc32"
 	"testing"
 
 	rcCrypt "github.com/rclone/rclone/backend/crypt"

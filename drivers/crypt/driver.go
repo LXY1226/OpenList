@@ -209,18 +209,29 @@ func (d *Crypt) Get(ctx context.Context, path string) (model.Obj, error) {
 				// 可能是 虚拟路径+开启文件夹加密：返回NotSupport让op.Get去尝试op.List查找
 				return nil, errs.NotSupport
 			}
-		} else if secondTry && errs.IsObjectNotFound(err) {
+		} else if errs.IsObjectNotFound(err) && secondTry {
 			// try the opposite
 			remoteFullPath = stdpath.Join(d.RemotePath, d.encryptPath(path, !firstTryIsFolder))
 			remoteObj, err = fs.Get(ctx, remoteFullPath, &fs.GetArgs{NoLog: true})
 			if err != nil {
+				if recoveredObj, recoverErr := d.getByDecryptedNameFromList(ctx, path); recoverErr == nil {
+					return recoveredObj, nil
+				}
 				return nil, err
 			}
+		} else if errs.IsObjectNotFound(err) {
+			if recoveredObj, recoverErr := d.getByDecryptedNameFromList(ctx, path); recoverErr == nil {
+				return recoveredObj, nil
+			}
+			return nil, err
 		} else {
 			return nil, err
 		}
 	}
+	return d.wrapRemoteObj(path, remoteFullPath, remoteObj), nil
+}
 
+func (d *Crypt) wrapRemoteObj(path, remoteFullPath string, remoteObj model.Obj) model.Obj {
 	size := remoteObj.GetSize()
 	name := remoteObj.GetName()
 	mask := model.GetObjMask(remoteObj) &^ model.Temp
@@ -255,7 +266,48 @@ func (d *Crypt) Get(ctx context.Context, path string) (model.Obj, error) {
 		IsFolder: remoteObj.IsDir(),
 		Ctime:    remoteObj.CreateTime(),
 		Mask:     mask,
-	}, nil
+	}
+}
+
+func (d *Crypt) getByDecryptedNameFromList(ctx context.Context, path string) (model.Obj, error) {
+	parent, wantName := stdpath.Split(strings.TrimSuffix(path, "/"))
+	if wantName == "" {
+		return nil, errs.ObjectNotFound
+	}
+	remoteParentPath := stdpath.Join(d.RemotePath, d.nameCipher.EncryptDirName(parent))
+	objs, err := fs.List(ctx, remoteParentPath, &fs.ListArgs{NoLog: true})
+	if err != nil {
+		return nil, err
+	}
+	var matched model.Obj
+	var matchedPath string
+	for _, obj := range objs {
+		if model.GetObjMask(obj)&model.Virtual != 0 {
+			continue
+		}
+		rawName := model.UnwrapObjName(obj).GetName()
+		decryptedName, err := d.decryptObjName(obj)
+		if err != nil || decryptedName != wantName {
+			continue
+		}
+		if matched != nil {
+			return nil, fmt.Errorf("multiple encrypted objects decrypt to %q under %s", wantName, parent)
+		}
+		matched = obj
+		matchedPath = stdpath.Join(remoteParentPath, rawName)
+	}
+	if matched == nil {
+		return nil, errs.ObjectNotFound
+	}
+	return d.wrapRemoteObj(path, matchedPath, matched), nil
+}
+
+func (d *Crypt) decryptObjName(obj model.Obj) (string, error) {
+	rawName := model.UnwrapObjName(obj).GetName()
+	if obj.IsDir() {
+		return d.nameCipher.DecryptDirName(rawName)
+	}
+	return d.nameCipher.DecryptFileName(rawName)
 }
 
 // https://github.com/rclone/rclone/blob/v1.67.0/backend/crypt/cipher.go#L37
