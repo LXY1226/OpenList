@@ -17,7 +17,8 @@ type Addition struct {
 
 	Thumbnail bool `json:"thumbnail" required:"true" default:"false" help:"enable thumbnail which pre-generated under .thumbnails folder"`
 
-	ShowHidden bool `json:"show_hidden"  default:"true" required:"false" help:"show hidden directories and files"`
+	ShowHidden   bool `json:"show_hidden"  default:"true" required:"false" help:"show hidden directories and files"`
+	StripOrigExt bool `json:"strip_orig_ext" required:"true" default:"false" help:"strip extension for backend appending ext to filename, can't co-exist with base32768'"`
 }
 
 var config = driver.Config{
