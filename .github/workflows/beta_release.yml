@@ -61,7 +61,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - target: "!(*musl*|*windows-arm64*|*windows7-*|*android*|*freebsd*)" # xgo and loongarch (exclude mips64le)
+          - target: "!(*musl*|*windows-arm64*|*windows7-*|*android*|*freebsd*|linux-*loong64*)" # xgo and loongarch (exclude mips64le)
+            hash: "md5"
+            flags: ""
+            goflags: ""
+          - target: "linux-*loong64*" # xgo and loongarch (exclude mips64le)
             hash: "md5"
             flags: ""
             goflags: ""
