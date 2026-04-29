@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/OpenListTeam/OpenList/v4/drivers/crypt/filename"
 	"github.com/OpenListTeam/OpenList/v4/internal/driver"
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"
 	"github.com/OpenListTeam/OpenList/v4/internal/fs"
@@ -30,7 +31,8 @@ import (
 type Crypt struct {
 	model.Storage
 	Addition
-	cipher *rcCrypt.Cipher
+	cipher     *rcCrypt.Cipher
+	nameCipher *filename.Cipher
 }
 
 const obfuscatedPrefix = "___Obfuscated___"
@@ -54,25 +56,46 @@ func (d *Crypt) Init(ctx context.Context) error {
 		return fmt.Errorf("failed to obfuscate salt: %w", err)
 	}
 
-	if d.Addition.StripOrigExt && d.FileNameEncoding == "base32768" {
-		return fmt.Errorf("strip_orig_ext will break base32768 encoding")
-	}
+	d.FileNameEnc = utils.GetNoneEmpty(d.FileNameEnc, filename.ModeOff)
+	d.FileNameEncoding = utils.GetNoneEmpty(d.FileNameEncoding, filename.EncodingBase64)
+	d.EncryptedSuffix = utils.GetNoneEmpty(d.EncryptedSuffix, ".bin")
+
 	isCryptExt := regexp.MustCompile(`^[.][A-Za-z0-9-_]{2,}$`).MatchString
 	if !isCryptExt(d.EncryptedSuffix) {
 		return fmt.Errorf("EncryptedSuffix is Illegal")
 	}
-	d.FileNameEncoding = utils.GetNoneEmpty(d.FileNameEncoding, "base64")
-	d.EncryptedSuffix = utils.GetNoneEmpty(d.EncryptedSuffix, ".bin")
 	d.RemotePath = utils.FixAndCleanPath(d.RemotePath)
 
 	p, _ := strings.CutPrefix(d.Password, obfuscatedPrefix)
 	p2, _ := strings.CutPrefix(d.Salt, obfuscatedPrefix)
+	nameCipher, err := filename.New(filename.Config{
+		Password:                p,
+		Salt:                    p2,
+		PasswordObscured:        true,
+		FileNameEncryption:      d.FileNameEnc,
+		DirectoryNameEncryption: strings.EqualFold(d.DirNameEnc, "true"),
+		FileNameEncoding:        d.FileNameEncoding,
+		EncryptedSuffix:         d.EncryptedSuffix,
+		StripOrigExt:            d.StripOrigExt,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create filename cipher: %w", err)
+	}
+
+	rcFileNameEnc := d.FileNameEnc
+	if rcFileNameEnc == filename.ModeStream {
+		rcFileNameEnc = filename.ModeStandard
+	}
+	rcFileNameEncoding := d.FileNameEncoding
+	if rcFileNameEncoding == filename.EncodingBase16384 || rcFileNameEncoding == filename.EncodingAuto {
+		rcFileNameEncoding = filename.EncodingBase64
+	}
 	config := configmap.Simple{
 		"password":                  p,
 		"password2":                 p2,
-		"filename_encryption":       d.FileNameEnc,
+		"filename_encryption":       rcFileNameEnc,
 		"directory_name_encryption": d.DirNameEnc,
-		"filename_encoding":         d.FileNameEncoding,
+		"filename_encoding":         rcFileNameEncoding,
 		"suffix":                    d.EncryptedSuffix,
 		"pass_bad_blocks":           "",
 	}
@@ -81,6 +104,7 @@ func (d *Crypt) Init(ctx context.Context) error {
 		return fmt.Errorf("failed to create Cipher: %w", err)
 	}
 	d.cipher = c
+	d.nameCipher = nameCipher
 
 	return nil
 }
@@ -118,7 +142,7 @@ func (d *Crypt) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([
 		name := obj.GetName()
 		if mask&model.Virtual == 0 {
 			if obj.IsDir() {
-				name, err = d.cipher.DecryptDirName(model.UnwrapObjName(obj).GetName())
+				name, err = d.nameCipher.DecryptDirName(model.UnwrapObjName(obj).GetName())
 				if err != nil {
 					// filter illegal files
 					continue
@@ -129,7 +153,7 @@ func (d *Crypt) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([
 					// filter illegal files
 					continue
 				}
-				name, err = d.cipher.DecryptFileName(model.UnwrapObjName(obj).GetName())
+				name, err = d.nameCipher.DecryptFileName(model.UnwrapObjName(obj).GetName())
 				if err != nil {
 					// filter illegal files
 					continue
@@ -208,14 +232,14 @@ func (d *Crypt) Get(ctx context.Context, path string) (model.Obj, error) {
 			} else {
 				size = decryptedSize
 			}
-			decryptedName, err := d.cipher.DecryptFileName(model.UnwrapObjName(remoteObj).GetName())
+			decryptedName, err := d.nameCipher.DecryptFileName(model.UnwrapObjName(remoteObj).GetName())
 			if err != nil {
 				log.Warnf("DecryptFileName failed for %s ,will use original name, err:%s", path, err)
 			} else {
 				name = decryptedName
 			}
 		} else {
-			decryptedName, err := d.cipher.DecryptDirName(model.UnwrapObjName(remoteObj).GetName())
+			decryptedName, err := d.nameCipher.DecryptDirName(model.UnwrapObjName(remoteObj).GetName())
 			if err != nil {
 				log.Warnf("DecryptDirName failed for %s ,will use original name, err:%s", path, err)
 			} else {
@@ -318,7 +342,7 @@ func (d *Crypt) MakeDir(ctx context.Context, parentDir model.Obj, dirName string
 	if err != nil {
 		return err
 	}
-	encryptedName := d.cipher.EncryptDirName(dirName)
+	encryptedName := d.nameCipher.EncryptDirName(dirName)
 	return op.MakeDir(ctx, remoteStorage, stdpath.Join(remoteActualPath, encryptedName))
 }
 
@@ -334,9 +358,9 @@ func (d *Crypt) Rename(ctx context.Context, srcObj model.Obj, newName string) er
 	}
 	var newEncryptedName string
 	if srcObj.IsDir() {
-		newEncryptedName = d.cipher.EncryptDirName(newName)
+		newEncryptedName = d.nameCipher.EncryptDirName(newName)
 	} else {
-		newEncryptedName = d.cipher.EncryptFileName(newName)
+		newEncryptedName = d.nameCipher.EncryptFileName(newName)
 	}
 	return op.Rename(ctx, remoteStorage, remoteActualPath, newEncryptedName)
 }
@@ -371,7 +395,7 @@ func (d *Crypt) Put(ctx context.Context, dstDir model.Obj, streamer model.FileSt
 		Obj: &model.Object{
 			ID:       streamer.GetID(),
 			Path:     streamer.GetPath(),
-			Name:     d.cipher.EncryptFileName(streamer.GetName()),
+			Name:     d.nameCipher.EncryptFileName(streamer.GetName()),
 			Size:     d.cipher.EncryptedSize(streamer.GetSize()),
 			Modified: streamer.ModTime(),
 			IsFolder: streamer.IsDir(),

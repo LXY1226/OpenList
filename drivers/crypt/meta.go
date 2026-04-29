@@ -6,19 +6,19 @@ import (
 )
 
 type Addition struct {
-	FileNameEnc string `json:"filename_encryption" type:"select" required:"true" options:"off,standard,obfuscate" default:"off"`
+	FileNameEnc string `json:"filename_encryption" type:"select" required:"true" options:"off,standard,obfuscate,stream" default:"off"`
 	DirNameEnc  string `json:"directory_name_encryption" type:"select" required:"true" options:"false,true" default:"false"`
 	RemotePath  string `json:"remote_path" required:"true" help:"This is where the encrypted data stores"`
 
 	Password         string `json:"password" required:"true" confidential:"true" help:"the main password"`
 	Salt             string `json:"salt" confidential:"true"  help:"If you don't know what is salt, treat it as a second password. Optional but recommended"`
 	EncryptedSuffix  string `json:"encrypted_suffix" required:"true" default:".bin" help:"for advanced user only! encrypted files will have this suffix"`
-	FileNameEncoding string `json:"filename_encoding" type:"select" required:"true" options:"base64,base32,base32768" default:"base64" help:"for advanced user only!"`
+	FileNameEncoding string `json:"filename_encoding" type:"select" required:"true" options:"base64,base32,base32768,base16384,auto" default:"base64" help:"for advanced user only!"`
 
 	Thumbnail bool `json:"thumbnail" required:"true" default:"false" help:"enable thumbnail which pre-generated under .thumbnails folder"`
 
 	ShowHidden   bool `json:"show_hidden"  default:"true" required:"false" help:"show hidden directories and files"`
-	StripOrigExt bool `json:"strip_orig_ext" required:"true" default:"false" help:"strip extension for backend appending ext to filename, can't co-exist with base32768'"`
+	StripOrigExt bool `json:"strip_orig_ext" required:"true" default:"false" help:"try to strip backend-appended extension when filename decryption fails"`
 }
 
 var config = driver.Config{

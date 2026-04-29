@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	cryptname "github.com/OpenListTeam/OpenList/v4/drivers/crypt/filename"
 	rcCrypt "github.com/rclone/rclone/backend/crypt"
 	"github.com/rclone/rclone/fs/config/configmap"
 	"github.com/rclone/rclone/fs/config/obscure"
@@ -59,9 +60,9 @@ func init() {
 
 	CryptCmd.Flags().StringVar(&opt.pwd, "pwd", "", "password used to encrypt/decrypt,if not contain ___Obfuscated___ prefix,will be obfuscated before used")
 	CryptCmd.Flags().StringVar(&opt.salt, "salt", "", "salt used to encrypt/decrypt,if not contain ___Obfuscated___ prefix,will be obfuscated before used")
-	CryptCmd.Flags().StringVar(&opt.filenameEncryption, "filename-encrypt", "off", "filename encryption mode: off,standard,obfuscate")
+	CryptCmd.Flags().StringVar(&opt.filenameEncryption, "filename-encrypt", "off", "filename encryption mode: off,standard,obfuscate,stream")
 	CryptCmd.Flags().StringVar(&opt.dirnameEncryption, "dirname-encrypt", "false", "is dirname encryption enabled:true,false")
-	CryptCmd.Flags().StringVar(&opt.filenameEncode, "filename-encode", "base64", "filename encoding mode: base64,base32,base32768")
+	CryptCmd.Flags().StringVar(&opt.filenameEncode, "filename-encode", "base64", "filename encoding mode: base64,base32,base32768,base16384,auto")
 	CryptCmd.Flags().StringVar(&opt.suffix, "suffix", ".bin", "suffix for encrypted file,default is .bin")
 }
 
@@ -72,11 +73,11 @@ func (o *options) validate() {
 	if o.op != "encrypt" && o.op != "decrypt" && o.op != "en" && o.op != "de" {
 		log.Fatal("op must be encrypt or decrypt")
 	}
-	if o.filenameEncryption != "off" && o.filenameEncryption != "standard" && o.filenameEncryption != "obfuscate" {
-		log.Fatal("filename_encryption must be off,standard,obfuscate")
+	if o.filenameEncryption != "off" && o.filenameEncryption != "standard" && o.filenameEncryption != "obfuscate" && o.filenameEncryption != "stream" {
+		log.Fatal("filename_encryption must be off,standard,obfuscate,stream")
 	}
-	if o.filenameEncode != "base64" && o.filenameEncode != "base32" && o.filenameEncode != "base32768" {
-		log.Fatal("filename_encode must be base64,base32,base32768")
+	if o.filenameEncode != "base64" && o.filenameEncode != "base32" && o.filenameEncode != "base32768" && o.filenameEncode != "base16384" && o.filenameEncode != "auto" {
+		log.Fatal("filename_encode must be base64,base32,base32768,base16384,auto")
 	}
 
 }
@@ -92,14 +93,34 @@ func (o *options) cryptFileDir() {
 	}
 	pwd := updateObfusParm(o.pwd)
 	salt := updateObfusParm(o.salt)
+	nameCipher, err := cryptname.New(cryptname.Config{
+		Password:                pwd,
+		Salt:                    salt,
+		PasswordObscured:        true,
+		FileNameEncryption:      o.filenameEncryption,
+		DirectoryNameEncryption: o.dirnameEncryption == "true",
+		FileNameEncoding:        o.filenameEncode,
+		EncryptedSuffix:         o.suffix,
+	})
+	if err != nil {
+		log.Fatalf("create filename cipher failed,err:%v", err)
+	}
 
 	//create cipher
+	rcFileNameEnc := o.filenameEncryption
+	if rcFileNameEnc == "stream" {
+		rcFileNameEnc = "standard"
+	}
+	rcFileNameEncoding := o.filenameEncode
+	if rcFileNameEncoding == "base16384" || rcFileNameEncoding == "auto" {
+		rcFileNameEncoding = "base64"
+	}
 	config := configmap.Simple{
 		"password":                  pwd,
 		"password2":                 salt,
-		"filename_encryption":       o.filenameEncryption,
+		"filename_encryption":       rcFileNameEnc,
 		"directory_name_encryption": o.dirnameEncryption,
-		"filename_encoding":         o.filenameEncode,
+		"filename_encoding":         rcFileNameEncoding,
 		"suffix":                    o.suffix,
 		"pass_bad_blocks":           "",
 	}
@@ -121,7 +142,7 @@ func (o *options) cryptFileDir() {
 		if dst == "" {
 			dst = filepath.Dir(src)
 		}
-		o.cryptFile(cipher, src, dst)
+		o.cryptFile(cipher, nameCipher, src, dst)
 		return
 	}
 
@@ -162,7 +183,7 @@ func (o *options) cryptFileDir() {
 						if _, ok := dirnameMap[rpds[i]]; ok {
 							rpds[i] = dirnameMap[rpds[i]]
 						} else {
-							rpds[i] = cipher.EncryptDirName(rpds[i])
+							rpds[i] = nameCipher.EncryptDirName(rpds[i])
 							dirnameMap[oname] = rpds[i]
 						}
 					}
@@ -173,7 +194,7 @@ func (o *options) cryptFileDir() {
 						if _, ok := dirnameMap[rpds[i]]; ok {
 							rpds[i] = dirnameMap[rpds[i]]
 						} else {
-							dnn, err := cipher.DecryptDirName(rpds[i])
+							dnn, err := nameCipher.DecryptDirName(rpds[i])
 							if err != nil {
 								log.Fatalf("decrypt dir name %v failed,err:%v", rpds[i], err)
 							}
@@ -210,13 +231,13 @@ func (o *options) cryptFileDir() {
 		}
 
 		log.Infof("file output dir %v", fdd)
-		o.cryptFile(cipher, p, fdd)
+		o.cryptFile(cipher, nameCipher, p, fdd)
 		return nil
 	})
 
 }
 
-func (o *options) cryptFile(cipher *rcCrypt.Cipher, src string, dst string) {
+func (o *options) cryptFile(cipher *rcCrypt.Cipher, nameCipher *cryptname.Cipher, src string, dst string) {
 	fileInfo, err := os.Stat(src)
 	if err != nil {
 		log.Fatalf("get file %v  info failed,err:%v", src, err)
@@ -234,10 +255,10 @@ func (o *options) cryptFile(cipher *rcCrypt.Cipher, src string, dst string) {
 	if o.op == "encrypt" || o.op == "en" {
 		filename := fileInfo.Name()
 		if o.filenameEncryption != "off" {
-			filename = cipher.EncryptFileName(fileInfo.Name())
+			filename = nameCipher.EncryptFileName(fileInfo.Name())
 			log.Infof("encrypt file name %v to %v", fileInfo.Name(), filename)
 		} else {
-			filename = fileInfo.Name() + o.suffix
+			filename = nameCipher.EncryptFileName(fileInfo.Name())
 		}
 		cryptSrcReader, err = cipher.EncryptData(fd)
 		if err != nil {
@@ -248,13 +269,16 @@ func (o *options) cryptFile(cipher *rcCrypt.Cipher, src string, dst string) {
 	} else {
 		filename := fileInfo.Name()
 		if o.filenameEncryption != "off" {
-			filename, err = cipher.DecryptFileName(filename)
+			filename, err = nameCipher.DecryptFileName(filename)
 			if err != nil {
 				log.Fatalf("decrypt file name %v failed,err:%v", src, err)
 			}
 			log.Infof("decrypt file name %v to %v, ", fileInfo.Name(), filename)
 		} else {
-			filename = strings.TrimSuffix(filename, o.suffix)
+			filename, err = nameCipher.DecryptFileName(filename)
+			if err != nil {
+				log.Fatalf("decrypt file name %v failed,err:%v", src, err)
+			}
 		}
 
 		cryptSrcReader, err = cipher.DecryptData(fd)
