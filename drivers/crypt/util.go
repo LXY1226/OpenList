@@ -22,8 +22,8 @@ func guessPath(path string) (isFolder, secondTry bool) {
 
 func (d *Crypt) encryptPath(path string, isFolder bool) string {
 	if isFolder {
-		return d.cipher.EncryptDirName(path)
+		return d.nameCipher.EncryptDirName(path)
 	}
 	dir, fileName := filepath.Split(path)
-	return stdpath.Join(d.cipher.EncryptDirName(dir), d.cipher.EncryptFileName(fileName))
+	return stdpath.Join(d.nameCipher.EncryptDirName(dir), d.nameCipher.EncryptFileName(fileName))
 }
