@@ -112,6 +112,62 @@ func TestStreamModeRecoveryAndCRC(t *testing.T) {
 	}
 }
 
+func TestStreamModeUsesCRCAsCTRIV(t *testing.T) {
+	c := newTestCipher(t, Config{
+		Password:           "pass",
+		Salt:               "salt",
+		FileNameEncryption: ModeStream,
+		FileNameEncoding:   EncodingBase64,
+	})
+	enc, err := encodingByName(EncodingBase64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := enc.DecodeString(c.EncryptFileName("same-prefix-a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := enc.DecodeString(c.EncryptFileName("same-prefix-b"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(a[4:15]) == string(b[4:15]) {
+		t.Fatal("stream ciphertext kept the same prefix; CTR IV is not varying by crc32")
+	}
+}
+
+func TestStreamModeCanDecryptLegacyFixedIV(t *testing.T) {
+	legacy := newTestCipher(t, Config{
+		Password:           "pass",
+		Salt:               "salt",
+		FileNameEncryption: ModeStream,
+		FileNameEncoding:   EncodingBase64,
+	})
+	plain := []byte("same-prefix-a")
+	raw := make([]byte, 4+len(plain))
+	binary.BigEndian.PutUint32(raw, crc32.ChecksumIEEE(plain))
+	legacy.stream(raw[4:], plain, 0, true)
+
+	current := newTestCipher(t, Config{
+		Password:           "pass",
+		Salt:               "salt",
+		FileNameEncryption: ModeStream,
+		FileNameEncoding:   EncodingBase64,
+		LegacyStreamIV:     true,
+	})
+	enc, err := encodingByName(EncodingBase64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := current.DecryptFileName(enc.EncodeToString(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != string(plain) {
+		t.Fatalf("DecryptFileName=%q want %q", got, plain)
+	}
+}
+
 func newTestCipher(t *testing.T, cfg Config) *Cipher {
 	t.Helper()
 	c, err := New(cfg)
