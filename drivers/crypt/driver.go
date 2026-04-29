@@ -54,6 +54,9 @@ func (d *Crypt) Init(ctx context.Context) error {
 		return fmt.Errorf("failed to obfuscate salt: %w", err)
 	}
 
+	if d.Addition.StripOrigExt && d.FileNameEncoding == "base32768" {
+		return fmt.Errorf("strip_orig_ext will break base32768 encoding")
+	}
 	isCryptExt := regexp.MustCompile(`^[.][A-Za-z0-9-_]{2,}$`).MatchString
 	if !isCryptExt(d.EncryptedSuffix) {
 		return fmt.Errorf("EncryptedSuffix is Illegal")
@@ -393,6 +396,17 @@ func (d *Crypt) GetDetails(ctx context.Context) (*model.StorageDetails, error) {
 	return &model.StorageDetails{
 		DiskUsage: remoteDetails.DiskUsage,
 	}, nil
+}
+
+func (d *Crypt) normalizeFileName(name string) string {
+	if d.Addition.StripOrigExt {
+		i := strings.LastIndexByte(name, '.')
+		if i == -1 {
+			return name
+		}
+		return name[:i]
+	}
+	return name
 }
 
 var _ driver.Driver = (*Crypt)(nil)
