@@ -1,0 +1,16 @@
+{
+  "base_url": "http://127.0.0.1:5244",
+  "token": "OPENLIST_ADMIN_TOKEN",
+  "crypt_mount_path": "/crypt",
+  "dry_run": true,
+  "overwrite": false,
+  "skip_errors": true,
+  "old": {
+    "filename_encryption": "standard",
+    "filename_encoding": "base64"
+  },
+  "new": {
+    "filename_encryption": "stream",
+    "filename_encoding": "base16384"
+  }
+}
