@@ -15,6 +15,9 @@ type Addition struct {
 	PageSize       int64   `json:"page_size" type:"number" default:"200" help:"list api per page size of 115open driver"`
 	AccessToken    string  `json:"access_token" required:"true"`
 	RefreshToken   string  `json:"refresh_token" required:"true"`
+	KVURL          string  `json:"kv_url" help:"optional functions-kv base URL for shared token"`
+	KVAuth         string  `json:"kv_auth" help:"optional __Host-Auth value or full cookie"`
+	KVKey          string  `json:"kv_key" help:"optional functions-kv key for shared token"`
 }
 
 var config = driver.Config{

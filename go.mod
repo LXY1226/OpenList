@@ -174,7 +174,7 @@ require (
 )
 
 require (
-	github.com/Max-Sum/base32768 v0.0.0-20230304063302-18e6ce5945fd // indirect
+	github.com/Max-Sum/base32768 v0.0.0-20230304063302-18e6ce5945fd
 	github.com/OpenListTeam/gsync v0.1.0 // indirect
 	github.com/abbot/go-http-auth v0.4.0 // indirect
 	github.com/aead/ecdh v0.2.0 // indirect
@@ -279,7 +279,7 @@ require (
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.64.0 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
-	github.com/rfjakob/eme v1.1.2 // indirect
+	github.com/rfjakob/eme v1.1.2
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/ryszard/goskiplist v0.0.0-20150312221310-2dfbae5fcf46 // indirect
 	github.com/shabbyrobe/gocovmerge v0.0.0-20230507112040-c3350d9342df // indirect
@@ -313,6 +313,6 @@ replace github.com/ProtonMail/go-proton-api => github.com/henrybear327/go-proton
 
 replace github.com/cronokirby/saferith => github.com/Da3zKi7/saferith v0.33.0-fixed
 
-// replace github.com/OpenListTeam/115-sdk-go => ../../OpenListTeam/115-sdk-go
+replace github.com/OpenListTeam/115-sdk-go => github.com/LXY1226/115-sdk-go v0.0.0-20260606065419-f9d87975fa06
 
 replace github.com/KarpelesLab/reflink => github.com/OpenListTeam/reflink v0.0.0-20260520031008-ed3c0dbe8009

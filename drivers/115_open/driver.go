@@ -19,6 +19,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/stream"
 	"github.com/OpenListTeam/OpenList/v4/pkg/http_range"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/time/rate"
 )
 
@@ -39,13 +40,46 @@ func (d *Open115) GetAddition() driver.Additional {
 }
 
 func (d *Open115) Init(ctx context.Context) error {
-	d.client = sdk.New(sdk.WithRefreshToken(d.Addition.RefreshToken),
+	var kv *open115KV
+	if d.kvEnabled() {
+		kv = new115OpenKV(d.Addition.KVURL, d.Addition.KVAuth, d.Addition.KVKey)
+		token, err := kv.InitToken(ctx, sdk.TokenValue{
+			AccessToken:  d.Addition.AccessToken,
+			RefreshToken: d.Addition.RefreshToken,
+		})
+		if err != nil {
+			return err
+		}
+		d.Addition.AccessToken = token.AccessToken
+		d.Addition.RefreshToken = token.RefreshToken
+		op.MustSaveDriverStorage(d)
+	}
+	opts := []sdk.Option{
+		sdk.WithRefreshToken(d.Addition.RefreshToken),
 		sdk.WithAccessToken(d.Addition.AccessToken),
 		sdk.WithOnRefreshToken(func(s1, s2 string) {
 			d.Addition.AccessToken = s1
 			d.Addition.RefreshToken = s2
 			op.MustSaveDriverStorage(d)
-		}))
+		}),
+	}
+	if kv != nil {
+		opts = append(opts,
+			sdk.WithBeforeTokenRefresh(kv.BeforeTokenRefresh),
+			sdk.WithOnRefreshToken(func(s1, s2 string) {
+				d.Addition.AccessToken = s1
+				d.Addition.RefreshToken = s2
+				op.MustSaveDriverStorage(d)
+				if err := kv.AfterTokenRefresh(context.Background(), sdk.TokenValue{
+					AccessToken:  s1,
+					RefreshToken: s2,
+				}); err != nil {
+					log.Errorf("[115_open] failed to update kv token: %v", err)
+				}
+			}),
+		)
+	}
+	d.client = sdk.New(opts...)
 	if flags.Debug || flags.Dev {
 		d.client.SetDebug(true)
 	}
@@ -85,6 +119,10 @@ func (d *Open115) Init(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (d *Open115) kvEnabled() bool {
+	return d.Addition.KVURL != "" && d.Addition.KVAuth != "" && d.Addition.KVKey != ""
 }
 
 func (d *Open115) WaitLimit(ctx context.Context) error {
@@ -218,7 +256,7 @@ func (d *Open115) Rename(ctx context.Context, srcObj model.Obj, newName string) 
 		return nil, err
 	}
 	_, err := d.client.UpdateFile(ctx, &sdk.UpdateFileReq{
-		FileID:  srcObj.GetID(),
+		FileID:   srcObj.GetID(),
 		FileName: newName,
 	})
 	if err != nil {
