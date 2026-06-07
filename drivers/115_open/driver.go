@@ -47,12 +47,6 @@ func (d *Open115) Init(ctx context.Context) error {
 			d.Addition.KVURL,
 			d.Addition.KVAuth,
 			d.Addition.KVKey,
-			functionskv.WithValidator[sdk.TokenValue](func(token sdk.TokenValue) bool {
-				return token.Valid()
-			}),
-			functionskv.WithBeforeSave[sdk.TokenValue](func(token sdk.TokenValue) sdk.TokenValue {
-				return token.WithRefreshTime(time.Now())
-			}),
 		)
 		token, err := kv.Init(ctx, sdk.TokenValue{
 			AccessToken:  d.Addition.AccessToken,
@@ -60,6 +54,9 @@ func (d *Open115) Init(ctx context.Context) error {
 		})
 		if err != nil {
 			return err
+		}
+		if !token.Valid() {
+			return fmt.Errorf("invalid 115 open token from functions-kv")
 		}
 		d.Addition.AccessToken = token.AccessToken
 		d.Addition.RefreshToken = token.RefreshToken
@@ -81,10 +78,11 @@ func (d *Open115) Init(ctx context.Context) error {
 				d.Addition.AccessToken = s1
 				d.Addition.RefreshToken = s2
 				op.MustSaveDriverStorage(d)
-				if err := kv.AfterRefresh(context.Background(), sdk.TokenValue{
+				token := sdk.TokenValue{
 					AccessToken:  s1,
 					RefreshToken: s2,
-				}); err != nil {
+				}.WithRefreshTime(time.Now())
+				if err := kv.AfterRefresh(context.Background(), token); err != nil {
 					log.Errorf("[115_open] failed to update kv token: %v", err)
 				}
 			}),
