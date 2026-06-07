@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	functionskv "github.com/LXY1226/functions-kv"
 	sdk "github.com/OpenListTeam/115-sdk-go"
 	"github.com/OpenListTeam/OpenList/v4/cmd/flags"
 	"github.com/OpenListTeam/OpenList/v4/drivers/base"
@@ -40,10 +41,20 @@ func (d *Open115) GetAddition() driver.Additional {
 }
 
 func (d *Open115) Init(ctx context.Context) error {
-	var kv *open115KV
+	var kv *functionskv.Client[sdk.TokenValue]
 	if d.kvEnabled() {
-		kv = new115OpenKV(d.Addition.KVURL, d.Addition.KVAuth, d.Addition.KVKey)
-		token, err := kv.InitToken(ctx, sdk.TokenValue{
+		kv = functionskv.New[sdk.TokenValue](
+			d.Addition.KVURL,
+			d.Addition.KVAuth,
+			d.Addition.KVKey,
+			functionskv.WithValidator[sdk.TokenValue](func(token sdk.TokenValue) bool {
+				return token.Valid()
+			}),
+			functionskv.WithBeforeSave[sdk.TokenValue](func(token sdk.TokenValue) sdk.TokenValue {
+				return token.WithRefreshTime(time.Now())
+			}),
+		)
+		token, err := kv.Init(ctx, sdk.TokenValue{
 			AccessToken:  d.Addition.AccessToken,
 			RefreshToken: d.Addition.RefreshToken,
 		})
@@ -65,12 +76,12 @@ func (d *Open115) Init(ctx context.Context) error {
 	}
 	if kv != nil {
 		opts = append(opts,
-			sdk.WithBeforeTokenRefresh(kv.BeforeTokenRefresh),
+			sdk.WithBeforeTokenRefresh(kv.BeforeRefresh),
 			sdk.WithOnRefreshToken(func(s1, s2 string) {
 				d.Addition.AccessToken = s1
 				d.Addition.RefreshToken = s2
 				op.MustSaveDriverStorage(d)
-				if err := kv.AfterTokenRefresh(context.Background(), sdk.TokenValue{
+				if err := kv.AfterRefresh(context.Background(), sdk.TokenValue{
 					AccessToken:  s1,
 					RefreshToken: s2,
 				}); err != nil {
