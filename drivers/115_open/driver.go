@@ -29,6 +29,7 @@ type Open115 struct {
 	Addition
 	client     *sdk.Client
 	limiter    *rate.Limiter
+	kv         *functionskv.Client[sdk.TokenValue]
 	parentPath string
 }
 
@@ -41,58 +42,31 @@ func (d *Open115) GetAddition() driver.Additional {
 }
 
 func (d *Open115) Init(ctx context.Context) error {
-	var kv *functionskv.Client[sdk.TokenValue]
-	if d.kvEnabled() {
-		kv = functionskv.New[sdk.TokenValue](
+	if d.kvConfigValid() {
+		d.kv = functionskv.New[sdk.TokenValue](
 			d.Addition.KVURL,
 			d.Addition.KVAuth,
 			d.Addition.KVKey,
 		)
-		token, err := kv.Init(ctx, sdk.TokenValue{
+		token, err := d.kv.Init(ctx, sdk.TokenValue{
 			AccessToken:  d.Addition.AccessToken,
 			RefreshToken: d.Addition.RefreshToken,
 		})
 		if err != nil {
 			return err
 		}
-		if !token.Valid() {
-			return fmt.Errorf("invalid 115 open token from functions-kv")
-		}
-		d.Addition.AccessToken = token.AccessToken
-		d.Addition.RefreshToken = token.RefreshToken
-		op.MustSaveDriverStorage(d)
-	}
-	opts := []sdk.Option{
-		sdk.WithRefreshToken(d.Addition.RefreshToken),
-		sdk.WithAccessToken(d.Addition.AccessToken),
-		sdk.WithOnRefreshToken(func(s1, s2 string) {
-			d.Addition.AccessToken = s1
-			d.Addition.RefreshToken = s2
+
+		// user provided key is not working
+		if d.probeCurrentKey(ctx) != nil {
+			if !token.Valid() {
+				return fmt.Errorf("invalid 115 open token from functions-kv and provided key is not working")
+			}
+			d.Addition.AccessToken = token.AccessToken
+			d.Addition.RefreshToken = token.RefreshToken
 			op.MustSaveDriverStorage(d)
-		}),
+		}
 	}
-	if kv != nil {
-		opts = append(opts,
-			sdk.WithBeforeTokenRefresh(kv.BeforeRefresh),
-			sdk.WithOnRefreshToken(func(s1, s2 string) {
-				d.Addition.AccessToken = s1
-				d.Addition.RefreshToken = s2
-				op.MustSaveDriverStorage(d)
-				token := sdk.TokenValue{
-					AccessToken:  s1,
-					RefreshToken: s2,
-				}.WithRefreshTime(time.Now())
-				if err := kv.AfterRefresh(context.Background(), token); err != nil {
-					log.Errorf("[115_open] failed to update kv token: %v", err)
-				}
-			}),
-		)
-	}
-	d.client = sdk.New(opts...)
-	if flags.Debug || flags.Dev {
-		d.client.SetDebug(true)
-	}
-	_, err := d.client.UserInfo(ctx)
+	err := d.probeCurrentKey(ctx)
 	if err != nil {
 		return err
 	}
@@ -130,7 +104,53 @@ func (d *Open115) Init(ctx context.Context) error {
 	return nil
 }
 
-func (d *Open115) kvEnabled() bool {
+func (d *Open115) probeCurrentKey(ctx context.Context) error {
+	opts := []sdk.Option{
+		sdk.WithRefreshToken(d.Addition.RefreshToken),
+		sdk.WithAccessToken(d.Addition.AccessToken),
+		sdk.WithOnRefreshToken(func(at, rt string) {
+			d.Addition.AccessToken = at
+			d.Addition.RefreshToken = rt
+			op.MustSaveDriverStorage(d)
+		}),
+	}
+	if d.kv != nil {
+		opts = append(opts,
+			sdk.WithBeforeTokenRefresh(d.kvBeforeTokenRefresh),
+			sdk.WithOnRefreshToken(func(s1, s2 string) {
+				d.Addition.AccessToken = s1
+				d.Addition.RefreshToken = s2
+				op.MustSaveDriverStorage(d)
+				token := sdk.TokenValue{
+					AccessToken:  s1,
+					RefreshToken: s2,
+				}.WithRefreshTime(time.Now())
+				if err := d.kv.Unlock(context.Background(), token); err != nil {
+					log.Errorf("[115_open] failed to update kv token: %v", err)
+				}
+			}),
+		)
+	}
+	d.client = sdk.New(opts...)
+	if flags.Debug || flags.Dev {
+		d.client.SetDebug(true)
+	}
+	_, err := d.client.UserInfo(ctx)
+	return err
+}
+
+func (d *Open115) kvBeforeTokenRefresh(ctx context.Context, old sdk.TokenValue) (*sdk.TokenValue, error) {
+	t, err := d.kv.Lock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if t != nil && t.AccessToken == old.AccessToken { // token not refresh by other client
+		return nil, nil
+	}
+	return &old, nil // token already refreshed by other client
+}
+
+func (d *Open115) kvConfigValid() bool {
 	return d.Addition.KVURL != "" && d.Addition.KVAuth != "" && d.Addition.KVKey != ""
 }
 

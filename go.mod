@@ -9,7 +9,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.2
 	github.com/KarpelesLab/reflink v1.0.2
 	github.com/KirCute/zip v1.0.1
-	github.com/LXY1226/functions-kv v0.0.0-20260607083613-cb9bc04686e4
+	github.com/LXY1226/functions-kv v0.0.0-20260609022817-2562e0813638
 	github.com/OpenListTeam/go-cache v0.1.0
 	github.com/OpenListTeam/sftpd-openlist v1.0.1
 	github.com/OpenListTeam/tache v0.2.2
