@@ -23,10 +23,10 @@ github.com/Da3zKi7/saferith v0.33.0-fixed h1:fnIWTk7EP9mZAICf7aQjeoAwpfrlCrkOvqm
 github.com/Da3zKi7/saferith v0.33.0-fixed/go.mod h1:QKJhjoqUtBsXCAVEjw38mFqoi7DebT7kthcD7UzbnoA=
 github.com/KirCute/zip v1.0.1 h1:L/tVZglOiDVKDi9Ud+fN49htgKdQ3Z0H80iX8OZk13c=
 github.com/KirCute/zip v1.0.1/go.mod h1:xhF7dCB+Bjvy+5a56lenYCKBsH+gxDNPZSy5Cp+nlXk=
-github.com/LXY1226/115-sdk-go v0.0.0-20260606065419-f9d87975fa06 h1:CYgAjlLlMLv45UmUTQMhQhjed8Ygsli6/BBZJGnOysc=
-github.com/LXY1226/115-sdk-go v0.0.0-20260606065419-f9d87975fa06/go.mod h1:cfvitk2lwe6036iNi2h+iNxwxWDifKZsSvNtrur5BqU=
-github.com/LXY1226/functions-kv v0.0.0-20260609022817-2562e0813638 h1:pm+cMBM2/CJbj95UCcdWtJSy3UnktO+parMhR3GNXZ8=
-github.com/LXY1226/functions-kv v0.0.0-20260609022817-2562e0813638/go.mod h1:1IiaXCmj3DTtr8ppWFfQEZxMfSH5OaHUNwaQ9pNEWJU=
+github.com/LXY1226/115-sdk-go v0.0.0-20260609021818-1dca018d225b h1:jssTLnyvR5vwWbewvCvKnJxCrdPfRNQxxGh8BUCv8lk=
+github.com/LXY1226/115-sdk-go v0.0.0-20260609021818-1dca018d225b/go.mod h1:cfvitk2lwe6036iNi2h+iNxwxWDifKZsSvNtrur5BqU=
+github.com/LXY1226/functions-kv v0.0.0-20260609034259-6bb5f108010d h1:frBMojINQ1aEZ8cNy9v7WG9N7K6FUUv20ayM8uyySKk=
+github.com/LXY1226/functions-kv v0.0.0-20260609034259-6bb5f108010d/go.mod h1:1IiaXCmj3DTtr8ppWFfQEZxMfSH5OaHUNwaQ9pNEWJU=
 github.com/Masterminds/semver/v3 v3.2.0 h1:3MEsd0SM6jqZojhjLWWeBY+Kcjy9i6MQAeY7YgDP83g=
 github.com/Masterminds/semver/v3 v3.2.0/go.mod h1:qvl/7zhW3nngYb5+80sSMF+FG2BjYrf8m9wsX0PNOMQ=
 github.com/Max-Sum/base32768 v0.0.0-20230304063302-18e6ce5945fd h1:nzE1YQBdx1bq9IlZinHa+HVffy+NmVRoKr+wHN8fpLE=

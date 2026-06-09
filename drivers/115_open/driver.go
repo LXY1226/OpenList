@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	functionskv "github.com/LXY1226/functions-kv"
@@ -30,6 +31,7 @@ type Open115 struct {
 	client     *sdk.Client
 	limiter    *rate.Limiter
 	kv         *functionskv.Client[sdk.TokenValue]
+	kvLocked   atomic.Bool
 	parentPath string
 }
 
@@ -121,12 +123,14 @@ func (d *Open115) probeCurrentKey(ctx context.Context) error {
 				d.Addition.AccessToken = s1
 				d.Addition.RefreshToken = s2
 				op.MustSaveDriverStorage(d)
-				token := sdk.TokenValue{
-					AccessToken:  s1,
-					RefreshToken: s2,
-				}.WithRefreshTime(time.Now())
-				if err := d.kv.Unlock(context.Background(), token); err != nil {
-					log.Errorf("[115_open] failed to update kv token: %v", err)
+				if d.kvLocked.Swap(false) {
+					token := sdk.TokenValue{
+						AccessToken:  s1,
+						RefreshToken: s2,
+					}.WithRefreshTime(time.Now())
+					if err := d.kv.Unlock(context.Background(), token); err != nil {
+						log.Errorf("[115_open] failed to update kv token: %v", err)
+					}
 				}
 			}),
 		)
@@ -144,10 +148,15 @@ func (d *Open115) kvBeforeTokenRefresh(ctx context.Context, old sdk.TokenValue) 
 	if err != nil {
 		return nil, err
 	}
-	if t != nil && t.AccessToken == old.AccessToken { // token not refresh by other client
+	if t == nil {
+		d.kvLocked.Store(true)
 		return nil, nil
 	}
-	return &old, nil // token already refreshed by other client
+	d.kvLocked.Store(false)
+	if !t.Valid() {
+		return nil, fmt.Errorf("invalid 115 open token from functions-kv")
+	}
+	return t, nil
 }
 
 func (d *Open115) kvConfigValid() bool {

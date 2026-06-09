@@ -9,7 +9,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.2
 	github.com/KarpelesLab/reflink v1.0.2
 	github.com/KirCute/zip v1.0.1
-	github.com/LXY1226/functions-kv v0.0.0-20260609022817-2562e0813638
+	github.com/LXY1226/functions-kv v0.0.0-20260609034259-6bb5f108010d
 	github.com/OpenListTeam/go-cache v0.1.0
 	github.com/OpenListTeam/sftpd-openlist v1.0.1
 	github.com/OpenListTeam/tache v0.2.2
@@ -314,6 +314,6 @@ replace github.com/ProtonMail/go-proton-api => github.com/henrybear327/go-proton
 
 replace github.com/cronokirby/saferith => github.com/Da3zKi7/saferith v0.33.0-fixed
 
-replace github.com/OpenListTeam/115-sdk-go => github.com/LXY1226/115-sdk-go v0.0.0-20260606065419-f9d87975fa06
+replace github.com/OpenListTeam/115-sdk-go => github.com/LXY1226/115-sdk-go v0.0.0-20260609021818-1dca018d225b
 
 replace github.com/KarpelesLab/reflink => github.com/OpenListTeam/reflink v0.0.0-20260520031008-ed3c0dbe8009
