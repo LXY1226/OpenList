@@ -200,14 +200,14 @@ func maybeRefreshCdnIndex(siteConfig SiteConfig) {
 			cdnIndexRefreshMu.Unlock()
 		}()
 
-		utils.Log.Infof("Refreshing index.html from CDN: %s/index.html...", siteConfig.Cdn)
+		utils.Log.Debugf("Refreshing index.html from CDN: %s/index.html...", siteConfig.Cdn)
 		index, err := fetchCdnIndex(siteConfig)
 		if err != nil {
 			utils.Log.Errorf("failed to refresh index.html from CDN: %v", err)
 			return
 		}
 		applyBaseIndex(siteConfig, index)
-		utils.Log.Info("Successfully refreshed index.html from CDN")
+		utils.Log.Debug("Successfully refreshed index.html from CDN")
 	}()
 }
 
