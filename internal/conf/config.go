@@ -111,33 +111,34 @@ type MCP struct {
 }
 
 type Config struct {
-	Force                 bool        `json:"force" env:"FORCE"`
-	SiteURL               string      `json:"site_url" env:"SITE_URL"`
-	Cdn                   string      `json:"cdn" env:"CDN"`
-	JwtSecret             string      `json:"jwt_secret" env:"JWT_SECRET"`
-	TokenExpiresIn        int         `json:"token_expires_in" env:"TOKEN_EXPIRES_IN"`
-	Database              Database    `json:"database" envPrefix:"DB_"`
-	Meilisearch           Meilisearch `json:"meilisearch" envPrefix:"MEILISEARCH_"`
-	Scheme                Scheme      `json:"scheme"`
-	TempDir               string      `json:"temp_dir" env:"TEMP_DIR"`
-	BleveDir              string      `json:"bleve_dir" env:"BLEVE_DIR"`
-	DistDir               string      `json:"dist_dir"`
-	Log                   LogConfig   `json:"log" envPrefix:"LOG_"`
-	DelayedStart          int         `json:"delayed_start" env:"DELAYED_START"`
-	AutoMemoryLimit       int         `json:"auto_memory_limit" env:"AUTO_MEMORY_LIMIT"`
-	MinFreeMemory         int         `json:"min_free_memory" env:"MIN_FREE_MEMORY"`
-	MaxBlockLimit         int         `json:"max_block_limit" env:"MAX_BLOCK_LIMIT"`
-	MaxConnections        int         `json:"max_connections" env:"MAX_CONNECTIONS"`
-	MaxConcurrency        int         `json:"max_concurrency" env:"MAX_CONCURRENCY"`
-	TlsInsecureSkipVerify bool        `json:"tls_insecure_skip_verify" env:"TLS_INSECURE_SKIP_VERIFY"`
-	Tasks                 TasksConfig `json:"tasks" envPrefix:"TASKS_"`
-	Cors                  Cors        `json:"cors" envPrefix:"CORS_"`
-	S3                    S3          `json:"s3" envPrefix:"S3_"`
-	FTP                   FTP         `json:"ftp" envPrefix:"FTP_"`
-	SFTP                  SFTP        `json:"sftp" envPrefix:"SFTP_"`
-	MCP                   MCP         `json:"mcp" envPrefix:"MCP_"`
-	LastLaunchedVersion   string      `json:"last_launched_version"`
-	ProxyAddress          string      `json:"proxy_address" env:"PROXY_ADDRESS"`
+	Force                   bool        `json:"force" env:"FORCE"`
+	SiteURL                 string      `json:"site_url" env:"SITE_URL"`
+	Cdn                     string      `json:"cdn" env:"CDN"`
+	CdnIndexRefreshInterval int         `json:"cdn_index_refresh_interval" env:"CDN_INDEX_REFRESH_INTERVAL"`
+	JwtSecret               string      `json:"jwt_secret" env:"JWT_SECRET"`
+	TokenExpiresIn          int         `json:"token_expires_in" env:"TOKEN_EXPIRES_IN"`
+	Database                Database    `json:"database" envPrefix:"DB_"`
+	Meilisearch             Meilisearch `json:"meilisearch" envPrefix:"MEILISEARCH_"`
+	Scheme                  Scheme      `json:"scheme"`
+	TempDir                 string      `json:"temp_dir" env:"TEMP_DIR"`
+	BleveDir                string      `json:"bleve_dir" env:"BLEVE_DIR"`
+	DistDir                 string      `json:"dist_dir"`
+	Log                     LogConfig   `json:"log" envPrefix:"LOG_"`
+	DelayedStart            int         `json:"delayed_start" env:"DELAYED_START"`
+	AutoMemoryLimit         int         `json:"auto_memory_limit" env:"AUTO_MEMORY_LIMIT"`
+	MinFreeMemory           int         `json:"min_free_memory" env:"MIN_FREE_MEMORY"`
+	MaxBlockLimit           int         `json:"max_block_limit" env:"MAX_BLOCK_LIMIT"`
+	MaxConnections          int         `json:"max_connections" env:"MAX_CONNECTIONS"`
+	MaxConcurrency          int         `json:"max_concurrency" env:"MAX_CONCURRENCY"`
+	TlsInsecureSkipVerify   bool        `json:"tls_insecure_skip_verify" env:"TLS_INSECURE_SKIP_VERIFY"`
+	Tasks                   TasksConfig `json:"tasks" envPrefix:"TASKS_"`
+	Cors                    Cors        `json:"cors" envPrefix:"CORS_"`
+	S3                      S3          `json:"s3" envPrefix:"S3_"`
+	FTP                     FTP         `json:"ftp" envPrefix:"FTP_"`
+	SFTP                    SFTP        `json:"sftp" envPrefix:"SFTP_"`
+	MCP                     MCP         `json:"mcp" envPrefix:"MCP_"`
+	LastLaunchedVersion     string      `json:"last_launched_version"`
+	ProxyAddress            string      `json:"proxy_address" env:"PROXY_ADDRESS"`
 }
 
 func DefaultConfig(dataDir string) *Config {
@@ -155,9 +156,10 @@ func DefaultConfig(dataDir string) *Config {
 			CertFile:   "",
 			KeyFile:    "",
 		},
-		JwtSecret:      random.String(16),
-		TokenExpiresIn: 48,
-		TempDir:        tempDir,
+		JwtSecret:               random.String(16),
+		CdnIndexRefreshInterval: 60,
+		TokenExpiresIn:          48,
+		TempDir:                 tempDir,
 		Database: Database{
 			Type:        "sqlite3",
 			Port:        0,

@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/drivers/base"
 	"github.com/OpenListTeam/OpenList/v4/internal/conf"
@@ -32,7 +34,14 @@ type Manifest struct {
 	Icons    []ManifestIcon `json:"icons"`
 }
 
-var static fs.FS
+var (
+	static fs.FS
+
+	indexMu             sync.RWMutex
+	cdnIndexRefreshMu   sync.Mutex
+	cdnIndexLastAttempt time.Time
+	cdnIndexRefreshing  bool
+)
 
 func initStatic() {
 	utils.Log.Debug("Initializing static file system...")
@@ -56,41 +65,42 @@ func replaceStrings(content string, replacements map[string]string) string {
 	return content
 }
 
-func initIndex(siteConfig SiteConfig) {
-	utils.Log.Debug("Initializing index.html...")
-	// dist_dir is empty and cdn is not empty, and web_version is empty or beta or dev or rolling
-	if conf.Conf.DistDir == "" && conf.Conf.Cdn != "" && (conf.WebVersion == "" || conf.WebVersion == "beta" || conf.WebVersion == "dev" || conf.WebVersion == "rolling") {
-		utils.Log.Infof("Fetching index.html from CDN: %s/index.html...", siteConfig.Cdn)
-		resp, err := base.RestyClient.R().
-			SetHeader("Accept", "text/html").
-			Get(fmt.Sprintf("%s/index.html", siteConfig.Cdn))
-		if err != nil {
-			utils.Log.Fatalf("failed to fetch index.html from CDN: %v", err)
-		}
-		if resp.StatusCode() != http.StatusOK {
-			utils.Log.Fatalf("failed to fetch index.html from CDN, status code: %d", resp.StatusCode())
-		}
-		conf.RawIndexHtml = string(resp.Body())
-		utils.Log.Info("Successfully fetched index.html from CDN")
-	} else {
-		utils.Log.Debug("Reading index.html from static files system...")
-		indexFile, err := static.Open("index.html")
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				utils.Log.Fatalf("index.html not exist, you may forget to put dist of frontend to public/dist")
-			}
-			utils.Log.Fatalf("failed to read index.html: %v", err)
-		}
-		defer func() {
-			_ = indexFile.Close()
-		}()
-		index, err := io.ReadAll(indexFile)
-		if err != nil {
-			utils.Log.Fatalf("failed to read dist/index.html")
-		}
-		conf.RawIndexHtml = string(index)
-		utils.Log.Debug("Successfully read index.html from static files system")
+func shouldUseCdnIndex() bool {
+	return conf.Conf.DistDir == "" && conf.Conf.Cdn != ""
+}
+
+func fetchCdnIndex(siteConfig SiteConfig) (string, error) {
+	resp, err := base.RestyClient.R().
+		SetHeader("Accept", "text/html").
+		Get(fmt.Sprintf("%s/index.html", siteConfig.Cdn))
+	if err != nil {
+		return "", err
 	}
+	if resp.StatusCode() != http.StatusOK {
+		return "", fmt.Errorf("status code: %d", resp.StatusCode())
+	}
+	return string(resp.Body()), nil
+}
+
+func readStaticIndex() (string, error) {
+	indexFile, err := static.Open("index.html")
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", errors.New("index.html not exist, you may forget to put dist of frontend to public/dist")
+		}
+		return "", err
+	}
+	defer func() {
+		_ = indexFile.Close()
+	}()
+	index, err := io.ReadAll(indexFile)
+	if err != nil {
+		return "", errors.New("failed to read dist/index.html")
+	}
+	return string(index), nil
+}
+
+func applyBaseIndex(siteConfig SiteConfig, index string) {
 	utils.Log.Debug("Replacing placeholders in index.html...")
 	// Construct the correct manifest path based on basePath
 	manifestPath := "/manifest.json"
@@ -102,11 +112,42 @@ func initIndex(siteConfig SiteConfig) {
 		"base_path: undefined":  fmt.Sprintf("base_path: '%s'", siteConfig.BasePath),
 		`href="/manifest.json"`: fmt.Sprintf(`href="%s"`, manifestPath),
 	}
-	conf.RawIndexHtml = replaceStrings(conf.RawIndexHtml, replaceMap)
-	UpdateIndex()
+	indexMu.Lock()
+	defer indexMu.Unlock()
+	conf.RawIndexHtml = replaceStrings(index, replaceMap)
+	updateIndexLocked()
+}
+
+func initIndex(siteConfig SiteConfig) {
+	utils.Log.Debug("Initializing index.html...")
+	if shouldUseCdnIndex() {
+		utils.Log.Infof("Fetching index.html from CDN: %s/index.html...", siteConfig.Cdn)
+		index, err := fetchCdnIndex(siteConfig)
+		markCdnIndexAttempt()
+		if err != nil {
+			utils.Log.Fatalf("failed to fetch index.html from CDN: %v", err)
+		}
+		applyBaseIndex(siteConfig, index)
+		utils.Log.Info("Successfully fetched index.html from CDN")
+		return
+	}
+
+	utils.Log.Debug("Reading index.html from static files system...")
+	index, err := readStaticIndex()
+	if err != nil {
+		utils.Log.Fatalf("failed to read index.html: %v", err)
+	}
+	applyBaseIndex(siteConfig, index)
+	utils.Log.Debug("Successfully read index.html from static files system")
 }
 
 func UpdateIndex() {
+	indexMu.Lock()
+	defer indexMu.Unlock()
+	updateIndexLocked()
+}
+
+func updateIndexLocked() {
 	utils.Log.Debug("Updating index.html with settings...")
 	favicon := setting.GetStr(conf.Favicon)
 	logo := strings.Split(setting.GetStr(conf.Logo), "\n")[0]
@@ -129,6 +170,54 @@ func UpdateIndex() {
 	}
 	conf.IndexHtml = replaceStrings(conf.ManageHtml, replaceMap2)
 	utils.Log.Debug("Index.html update completed")
+}
+
+func markCdnIndexAttempt() {
+	cdnIndexRefreshMu.Lock()
+	cdnIndexLastAttempt = time.Now()
+	cdnIndexRefreshMu.Unlock()
+}
+
+func maybeRefreshCdnIndex(siteConfig SiteConfig) {
+	if !shouldUseCdnIndex() || conf.Conf.CdnIndexRefreshInterval <= 0 {
+		return
+	}
+
+	interval := time.Duration(conf.Conf.CdnIndexRefreshInterval) * time.Second
+	cdnIndexRefreshMu.Lock()
+	if cdnIndexRefreshing || time.Since(cdnIndexLastAttempt) < interval {
+		cdnIndexRefreshMu.Unlock()
+		return
+	}
+	cdnIndexRefreshing = true
+	cdnIndexLastAttempt = time.Now()
+	cdnIndexRefreshMu.Unlock()
+
+	go func() {
+		defer func() {
+			cdnIndexRefreshMu.Lock()
+			cdnIndexRefreshing = false
+			cdnIndexRefreshMu.Unlock()
+		}()
+
+		utils.Log.Infof("Refreshing index.html from CDN: %s/index.html...", siteConfig.Cdn)
+		index, err := fetchCdnIndex(siteConfig)
+		if err != nil {
+			utils.Log.Errorf("failed to refresh index.html from CDN: %v", err)
+			return
+		}
+		applyBaseIndex(siteConfig, index)
+		utils.Log.Info("Successfully refreshed index.html from CDN")
+	}()
+}
+
+func currentIndexHtml(path string) string {
+	indexMu.RLock()
+	defer indexMu.RUnlock()
+	if strings.HasPrefix(path, "/@manage") {
+		return conf.ManageHtml
+	}
+	return conf.IndexHtml
 }
 
 func ManifestJSON(c *gin.Context) {
@@ -217,11 +306,8 @@ func Static(r *gin.RouterGroup, noRoute func(handlers ...gin.HandlerFunc)) {
 		}
 		c.Header("Content-Type", "text/html")
 		c.Status(200)
-		if strings.HasPrefix(c.Request.URL.Path, "/@manage") {
-			_, _ = c.Writer.WriteString(conf.ManageHtml)
-		} else {
-			_, _ = c.Writer.WriteString(conf.IndexHtml)
-		}
+		maybeRefreshCdnIndex(siteConfig)
+		_, _ = c.Writer.WriteString(currentIndexHtml(c.Request.URL.Path))
 		c.Writer.Flush()
 		c.Writer.WriteHeaderNow()
 	})
